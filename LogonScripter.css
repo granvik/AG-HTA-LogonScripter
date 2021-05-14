@@ -1,0 +1,77 @@
+body {
+   background-color: buttonface;
+   font-family: Helvetica;
+   font-size: 8pt;
+   margin-top: 10px;
+   margin-left: 10px;
+   margin-right: 10px;
+   margin-bottom: 10px;
+}
+.button {
+   font-family: Helvetica;
+   font-size: 8pt;
+   width: 35px;
+}
+textarea {
+   font-family: arial;
+   font-size: 8pt;
+   margin-left: 3px;
+   width: 80%;
+   height: 400px;
+}
+select {
+   font-family: arial;
+   font-size: 8pt;
+   width: 40px;
+   margin-left: 0px;
+}
+#output {
+   height:400px; 
+   background-color:#eeeeee;
+}
+#intro {
+   font-family: arial;
+   font-size: 10pt;
+   font-weight:bold;
+}
+li {
+	list-style: none;
+}
+#actions {
+padding:0px;
+margin:0 0 0 10px;}
+#actions li {
+  list-style: decimal;
+  margin:0 0 0 10px;
+  padding: 2px;
+}
+#actionsheader {
+  display:none;
+  font-family: arial;
+  font-size: 10pt;
+  font-weight:bold;
+  padding: 10px;  
+}
+#variables {
+display:none;
+position:absolute;
+background-color:silver;
+border: 1px Solid;
+}
+#variables li {
+margin:0;
+padding:2px;
+display:block;
+cursor:hand;
+}
+.buttoninsert {
+  display:none;
+}
+#group {
+width:300px;
+}
+.rmaction {
+color: red;
+text-decoration:underline;
+cursor:hand;
+}

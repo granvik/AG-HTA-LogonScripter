@@ -1,0 +1,391 @@
+<html>
+<!--
+'********************************************************************
+'*
+'*  File:           LogonScripter.hta
+'*  Created:        may 2007
+'*  Changed:        january 2012
+'*  Version:        1.1.1.1
+'*  Author:         Andrey Grevtsov 
+'*                  http://aradm.ru
+'*
+'*  Description:    Tool for automatic create users logon scripts. 
+'*
+'*
+'*  Copyleft (C)    2007-2012 Andrey Grevtsov
+'*
+'*  License:        GPL
+'*
+'********************************************************************
+-->
+<head>
+<META HTTP-EQUIV="MSThemeCompatible" CONTENT="yes">
+<title>LogonScripter - Полуавтоматическое создание сценариев VBScript</title>
+<meta http-equiv="Content-Type" content="text/html; charset=windows-1251">
+<HTA:application
+  id="objLogonScripter"
+  applicationname="LogonScripter"
+	borderstyle="normal"
+	caption="yes"
+	contextmenu="false"
+	icon="logonscripter.ico"
+	maximizebutton="true"
+	minimizebutton="true"
+	navigable="false"
+	scroll="true"
+	selection="false"
+	showintaskbar="true"
+	singleinstance="true"
+	sysmenu="true"
+	version="1.1.1.0"
+	windowstate="normal"
+>
+<link href="LogonScripter.css" rel="STYLESHEET" type="text/css" />
+<script type="text/javascript" src="../lib/getCurrentDir.js"></script>
+<script type="text/javascript" src="../lib/saveFile.js"></script>
+<script type="text/javascript">
+var objOutput;
+var objInputCurrent;
+strSpecialFolders = "AllUsersDesktop,AllUsersStartMenu,AllUsersPrograms,AllUsersStartup,Desktop,Favorites,Fonts,MyDocuments,NetHood,PrintHood,Programs,Recent,SendTo,StartMenu,Startup,Templates";
+arrSpecialFolders = strSpecialFolders.split(',');
+strEnvironment = "allusersprofile,appdata,commonprogramfiles,computername,comspec,homedrive,homepath,include,lang,lib,logonserver,programfiles,systemdrive,systemroot,temp,tmp,userdomain,username,userprofile,windir".toUpperCase();
+arrEnv = strEnvironment.split(','); 
+
+function logging(strMessage) {
+  document.getElementById('log').value = document.getElementById('log').value + strMessage + '\n'; 
+  document.getElementById('log').style.display = "block";
+}
+ 
+function windowOnload(){
+  strHTADir = getCurrentDir();
+	window.execScript(getPluginsText()) ; 
+  actnum=0;
+  populateDropGroups();
+  objOutput = document.getElementById("output");
+  addEvents();
+  setVisibility();
+  btnCreateScript.style.display="none";
+  btnSaveFile.style.display="none";
+  output.style.display="none";
+  createVariablesList();
+}
+function createTag(strTag,strId,objParent){
+  objElement=document.createElement(strTag);
+  objElement.id=strId;
+  return objParent.appendChild(objElement);
+}
+function populateDropGroups() {
+  try {
+    var objRootDSE=GetObject("LDAP://RootDSE");
+    objDomain=GetObject("LDAP://" + objRootDSE.get("DefaultNamingContext"))
+    strQuery="Select sAMAccountname,cn,distinguishedname,GroupType from '" + objDomain.AdsPath + "' Where objectCategory='Group' AND objectclass='Group' ";
+    var ADS_SCOPE_SUBTREE = 2;
+    var objConnection = new ActiveXObject("ADODB.Connection");
+    var objCommand = new ActiveXObject("ADODB.Command");
+    var objRecordSet = new ActiveXObject("ADODB.Recordset");
+    objConnection.Provider = "ADsDSOObject";
+    objConnection.Open = "Active Directory Provider";
+    objCommand.ActiveConnection = objConnection;
+    objCommand.CommandType = 1;
+    objCommand.CommandText =  strQuery;
+    objCommand.Properties("Page Size") = 1000;
+    objRecordSet = objCommand.Execute;
+    var arrSAMAccountname=[]
+    arrSAMAccountname[0] = "";
+    ErrCount = objConnection.errors.count;
+      if(ErrCount > 0){
+        for(Err = 0; Err < ErrCount; Err++){
+          output += objConnection.errors.item(Err);
+         }
+       }
+    objRecordSet.MoveFirst;
+    var i=1;
+ 	  while (!objRecordSet.EOF) {
+      arrSAMAccountname[i] = objRecordSet.fields(2).value;
+      objRecordSet.MoveNext;
+      i++;
+    }
+    populateDropDown("group","group_list",arrSAMAccountname,arrSAMAccountname);
+  }
+  catch (e ){
+    document.getElementById("group_block").style.display='none';
+  }
+}
+function populateDropDown(strSelectName,strParentContainerId,arrText,arrValue) {
+  var objParent = document.getElementById(strParentContainerId);
+  var objSelect = createTag("select",strSelectName,objParent);
+  objSelect.name = strSelectName;
+  objSelect.size = 1;
+  for (var i = 0;i < arrText.length;i++) {
+    strOptionName = strSelectName + i;
+    var objOption = createTag("option",strOptionName,objSelect);
+    objOption.text = arrText[i];
+    objOption.value = arrValue[i];
+  }
+}
+function getFunctionTextFromLib(strFunctionName){
+  var strLibDir = "";
+  strLibDir = strHTADir +'..\\lib\\';
+  ForReading = 1;
+  objFs = new ActiveXObject("Scripting.FileSystemObject");
+  objFile = objFs.OpenTextFile( strLibDir + strFunctionName , ForReading);
+  return(objFile.ReadAll());
+}
+function loadLib(strFile){
+  window.execScript(getFunctionTextFromLib(strFile)); 
+}
+function getPluginsText(){
+  var strPluginsDir = "";
+  strPluginsDir=strHTADir +'Plugins\\';
+  ForReading = 1;
+  objFs = new ActiveXObject("Scripting.FileSystemObject");
+  objPluginsDir=objFs.getFolder(strPluginsDir);
+  strJsText="";
+  colFiles = new Enumerator(objPluginsDir.Files);
+  for (; !colFiles.atEnd(); colFiles.moveNext())  {
+    objFile=objFs.OpenTextFile(colFiles.item(), ForReading);
+    strJsText=strJsText+"\n"+objFile.ReadAll();
+  }
+  return(strJsText);
+}
+function setVisibility() {
+  var arrIds = document.getElementsByTagName("input");
+  if (this.value=="Создать скрипт") {getScriptText();}
+  if (this.value=="Сохранить скрипт") {saveFile('vbs','logonscript');}
+  if (this.value=="Добавить действие") {makeAction();}
+  
+  for (k=0;k<arrIds.length;k++) {
+    if (arrIds[k].type=="radio" || arrIds[k].type=="checkbox"){
+      setVisibilitySubUl(arrIds[k]);
+    }
+  }
+  hideVariablesList();
+}
+
+function setVisibilitySubUl(objObj) {
+  var objParent = objObj.parentNode;
+  var arrChildrens = objParent.children;
+	if (!objObj.checked) {
+    for (j=0; j<arrChildrens.length;j++) {
+      if (arrChildrens[j].tagName!="INPUT" && arrChildrens[j].tagName!="A"){
+        arrChildrens[j].style.display = "none";
+      }
+    }
+  }
+  else {
+    for (j=0; j<arrChildrens.length;j++) {
+      if (arrChildrens[j].tagName!="INPUT")    
+        arrChildrens[j].style.display = "block";
+    }  
+  }
+}
+
+function addEvents()
+{
+  var x = document.getElementsByTagName('input');
+  for (var i=0;i<x.length;i++) {
+    x[i].onclick = setVisibility;
+  }
+}
+function getScriptText() {
+    var objActions = document.getElementById("actions");
+    var arrChildrens = objActions.children;
+    var arrFunctions =[];
+    var strFunctionsCall="";
+    var blnIsUseAGroupMember = false ;
+    for (var i=0; i<arrChildrens.length;i++){
+      var jy = 0;
+      var arrChChildrens = arrChildrens[i].children;
+      var strFunction = arrChChildrens[1].value;
+      var strGroup = arrChChildrens[2].value;
+      if (strGroup.length > 0) {
+        strFunctionsCall += 'If IsThisUserAMemberOfGroup("'+strGroup+'") Then \n  '+arrChChildrens[3].value+"\nEnd If\n";
+        blnIsUseAGroupMember = true;
+      }
+      else {
+      	strFunctionsCall += arrChChildrens[3].value+"\n";
+      }
+      for (var j=0;j<arrFunctions.length;j++) {
+        if (arrFunctions[j] == strFunction) {var jy = 1;}
+      }
+      if (jy == 0) {arrFunctions[arrFunctions.length] = strFunction;}
+    }
+    var strFunctions =""; 
+    for (var i=0; i<arrFunctions.length;i++) {
+      if (arrFunctions[i]!=""){
+        strFunctions += getFunctionTextFromLib(arrFunctions[i]+".vbs");
+      }
+    }
+    strFunctions += blnIsUseAGroupMember ? getFunctionTextFromLib('IsThisUserAMemberOfGroup.vbs'):"";
+    var objOutput = document.getElementById("output");
+    strFunctionsCall = replaceVariable(strFunctionsCall);
+    objOutput.value = strFunctionsCall+"\n"+strFunctions;
+    objOutput.style.display="block";
+    btnSaveFile.style.display="block";
+}
+function getCheckedValueByName(name){
+  var checkedValue="";
+  var arrRadio = document.getElementsByName(name);
+  for (var r=0;r<arrRadio.length;r++) {
+    checkedValue = arrRadio[r].checked ? arrRadio[r].value : checkedValue;
+  }
+  return checkedValue;
+}
+function aClick(n, v){
+  var arrRadio = document.getElementsByName(n);
+  for (var r=0;r<arrRadio.length;r++) {
+    if (arrRadio[r].value == v ) {arrRadio[r].checked="True";}
+  }
+  setVisibility();
+}
+function makeAction() {
+  var strCallFunction ="";
+  var n = getCheckedValueByName("n");
+  if (n){
+    strMakeFunction="makeAction"+n;
+//    if (strMakeFunction){strMakeFunction;}
+    if (typeof this.window[strMakeFunction]=='function'){
+      window.execScript(strMakeFunction+"()");
+    }
+  }
+}
+function addAction(strCallFunction,strDescription,strFunction) {
+  // Групповое применение
+  var group_use = document.getElementsByName("group_use")[0].checked;
+  if (group_use) {  
+    var group = document.getElementsByName("group")[0].value;
+  }
+  if (strCallFunction) {
+    var objActions = document.getElementById("actions");
+    var len=objActions.children.length;
+    var strAction = "action"+len;
+    var objAction = createTag("li",strAction,objActions);
+    var objActiond = createTag("div",strAction+"d",objAction);
+    if (group_use && group.length > 0) {
+      strDescription = strDescription + ' только для группы <b>' +group+ '</b>';
+    }
+    objActiond.innerHTML=strDescription;
+    var objActionf = createTag("textarea",strAction+"f",objAction);
+    var objActiong = createTag("textarea",strAction+"g",objAction);
+    if (group_use) {
+      objActiong.value = group;
+    }    
+    objActionf.value=strFunction;
+    objActionf.style.display="none"; 
+    var objActionc = createTag("textarea",strAction+"c",objAction);
+    objActionc.value=strCallFunction;
+    objActionc.style.display="none";  
+    objActiong.style.display="none";
+    btnCreateScript.style.display="block";
+    output.style.display="none";
+    btnSaveFile.style.display="none";
+    actionsheader.style.display="block";
+		var objActionR = createTag("span",strAction+"r",objAction);
+		objActionR.innerHTML="Удалить действие";
+		objActionR.onclick=removeAction;
+		objActionR.className="rmaction";  
+  }
+  else {alert("Не все параметры указаны!")}
+}
+function removeAction() {
+  var objActions = document.getElementById("actions");
+  var objAction=this.parentNode;
+  objAction.innerHTML="";
+  objAction.removeNode();
+  output.style.display="none";
+  btnSaveFile.style.display="none";
+  if (objActions.childNodes.length<1){
+    btnCreateScript.style.display="none";
+	}
+}
+function replaceVariable(strSourceTxt) {
+// Переменные среды
+  var strEnvFunctions='';
+  var strEnvFunctionsHead = '';
+	for (var i=0; i < arrEnv.length; i++){
+  	var objRegExp = new RegExp('\\%\%'+arrEnv[i]+'\\%\%','gi');
+  	if (strSourceTxt.match(objRegExp)){
+    	strSourceTxt = strSourceTxt.replace(objRegExp, '"+'+arrEnv[i]+'+"');
+    	strEnvFunctions += arrEnv[i]+' = objShell.Environment.Item("'+arrEnv[i]+'")\n';
+			strEnvFunctionsHead = 'Set objShell = WScript.CreateObject("WScript.Shell")\n'
+   	}
+  }
+// Специальные папки  
+	for (var i=0; i < arrSpecialFolders.length; i++){
+	  var objRegExp = new RegExp('\\%\%'+arrSpecialFolders[i]+'\\%\%','gi');
+	  if (strSourceTxt.match(objRegExp)){
+	    strSourceTxt = strSourceTxt.replace(objRegExp, '"+'+arrSpecialFolders[i]+'+"');
+	    strEnvFunctions += arrSpecialFolders[i]+' = objShell.SpecialFolders("'+arrSpecialFolders[i]+'")\n';
+	    strEnvFunctionsHead = 'Set objShell = WScript.CreateObject("WScript.Shell")\n'
+    }
+  }
+	strEnvFunctions = strEnvFunctionsHead + strEnvFunctions;
+  return strEnvFunctions + strSourceTxt;
+}
+function viewVariablesList(objCurrent) {
+    var objVariables = document.getElementById("variables")
+    objVariables.style.display = 'block';
+    objVariables.style.left = objCurrent.offsetLeft;
+    objVariables.style.top = objCurrent.offsetTop;
+}
+function createVariablesList() {
+  var objVariables = document.getElementById("variables"); 
+  for (var i=0; i<arrSpecialFolders.length;i++) {
+    var objVariable = createTag("li",arrSpecialFolders[i],objVariables);
+    objVariable.innerHTML = arrSpecialFolders[i];
+    objVariable.onclick = insertVariable;
+    }
+}
+function insertVariable(){
+  objInputCurrent.value += '%%'+this.innerHTML+'%%';
+  hideVariablesList();
+}
+function hideVariablesList() {
+  var objVariables = document.getElementById("variables");
+  objVariables.style.display = 'none';
+}
+
+function viewInsertButton(objCurrent) {
+  objInputCurrent = objCurrent;
+  var objParent = objCurrent.parentNode;
+  var arrChildrens = objParent.children;
+  for (var i=0; i<arrChildrens.length; i++){
+    if (arrChildrens[i].className == 'buttoninsert') {
+      arrChildrens[i].style.display = 'inline';
+    }
+  }
+}
+function hideInsertButton() {
+  var arrA = document.getElementsByTagName('A');
+  for (var i=0; i<arrA.length; i++){
+      if (arrA[i].className == 'buttoninsert') {
+      arrA[i].style.display = 'none';
+    }
+  }
+}
+</script>
+</head>
+
+<body onload="javascript:windowOnload();">
+<ul id="variables">
+</ul>
+<div id="intro" >Выберите действие, которое необходимо выполнить при входе пользователя в систему</div>
+<ul id="actionsselect"></ul>
+<ul id="group_block">
+  <li><input type="checkbox" name="group_use" >Группа, для которой будет выполняться скрипт
+    <ul><li id="group_list"></li>
+    </ul>
+  </li>
+</ul>
+
+<ul id="variables"></ul>
+<input type="button" name="btnAddAction" value="Добавить действие"><br />
+<div id="actionsheader">Список действий</div>
+<ol id="actions"></ol>
+<input type="button" name="btnCreateScript" value="Создать скрипт">
+<textarea id="output"></textarea>
+<input type="button" name="btnSaveFile" value="Сохранить скрипт"><br />
+<textarea id="log" style="display:none;"></textarea>
+</body>
+
+</html>
